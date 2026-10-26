@@ -1,0 +1,72 @@
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local teamColors = {
+	Guards = Color3.fromRGB(13, 105, 172),
+	Inmates = Color3.fromRGB(218, 133, 65),
+	Criminals = Color3.fromRGB(255, 0, 0)
+}
+
+-- Helper to make the outline color slightly darker than the base color
+local function getDarkerColor(c)
+	return Color3.new(c.R * 0.75, c.G * 0.75, c.B * 0.75)
+end
+
+local function setupIndicator(player, character)
+	if player == LocalPlayer then return end
+	local head = character:WaitForChild("Head", 5)
+	if not head then return end
+
+	-- Cleanup old instances if they exist
+	if head:FindFirstChild("TeamIndicator") then head.TeamIndicator:Destroy() end
+	if character:FindFirstChild("TeamHighlight") then character.TeamHighlight:Destroy() end
+
+	-- 1. BillboardGui Setup (Head diamond)
+	local bg = Instance.new("BillboardGui", head)
+	bg.Name, bg.AlwaysOnTop, bg.Size, bg.StudsOffsetWorldSpace, bg.Adornee = 
+		"TeamIndicator", true, UDim2.new(0, 25, 0, 25), Vector3.new(0, 1.5, 0), head
+
+	local frame = Instance.new("Frame", bg)
+	frame.AnchorPoint, frame.Position, frame.Size, frame.Rotation = 
+		Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.2, 0, 0.2, 0), 45
+	frame.BorderSizePixel, frame.BorderColor3 = 1, Color3.new(0, 0, 0)
+
+	-- 2. Highlight Setup (Character Model ESP)
+	local hl = Instance.new("Highlight", character)
+	hl.Name, hl.DepthMode, hl.FillTransparency, hl.OutlineTransparency = 
+		"TeamHighlight", Enum.HighlightDepthMode.AlwaysOnTop, 0.95, 0.8
+
+	-- 3. Team Color Sync
+	local function updateColors()
+		local teamCol = (player.Team and teamColors[player.Team.Name]) or teamColors.Guards
+		frame.BackgroundColor3 = teamCol
+		hl.FillColor = teamCol
+		hl.OutlineColor = getDarkerColor(teamCol)
+	end
+	updateColors()
+	player:GetPropertyChangedSignal("Team"):Connect(updateColors)
+
+	-- 4. Alive / Dead State Management
+	local humanoid = character:WaitForChild("Humanoid", 5)
+	if humanoid then
+		local function updateHealth() 
+			local isAlive = humanoid.Health > 0
+			bg.Enabled = isAlive
+			hl.Enabled = isAlive
+		end
+		updateHealth()
+		humanoid:GetPropertyChangedSignal("Health"):Connect(updateHealth)
+		humanoid.Died:Connect(function() 
+			bg.Enabled = false 
+			hl.Enabled = false
+		end)
+	end
+end
+
+local function monitorPlayer(player)
+	player.CharacterAdded:Connect(function(char) setupIndicator(player, char) end)
+	if player.Character then task.spawn(setupIndicator, player, player.Character) end
+end
+
+Players.PlayerAdded:Connect(monitorPlayer)
+for _, p in ipairs(Players:GetPlayers()) do monitorPlayer(p) end
