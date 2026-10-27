@@ -1,1 +1,25 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
 
+local function handleAntiJump(character)
+	local antiJump = character:WaitForChild("AntiJump", 5)
+	
+	if antiJump and antiJump:IsA("Script") or antiJump:IsA("LocalScript") then
+		-- Disable immediately if enabled
+		antiJump.Enabled = false
+		
+		-- Force it to stay disabled if another script tries to re-enable it
+		antiJump:GetPropertyChangedSignal("Enabled"):Connect(function()
+			if antiJump.Enabled then
+				antiJump.Enabled = false
+			end
+		end)
+	end
+end
+
+-- Run when the character spawns
+if player.Character then
+	handleAntiJump(player.Character)
+end
+
+player.CharacterAdded:Connect(handleAntiJump)
