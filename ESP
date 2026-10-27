@@ -1,72 +1,164 @@
+-- Services
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
-local teamColors = {
-	Guards = Color3.fromRGB(13, 105, 172),
-	Inmates = Color3.fromRGB(218, 133, 65),
+-- Configuration: Team Colors
+local TEAM_COLORS = {
+	Guards    = Color3.fromRGB(13, 105, 172),
+	Inmates   = Color3.fromRGB(218, 133, 65),
 	Criminals = Color3.fromRGB(255, 0, 0)
 }
 
--- Helper to make the outline color slightly darker than the base color
-local function getDarkerColor(c)
-	return Color3.new(c.R * 0.75, c.G * 0.75, c.B * 0.75)
+-- Configuration: Target Items to Check
+local TARGET_ITEMS = {
+	["M9"]             = true,
+	["M4A1"]           = true,
+	["Remington 870"]  = true,
+	["Keycard"]        = true,
+	["Crude Knife"]    = true,
+	["Hammer"]         = true,
+	["M700"]           = true,
+	["MP5"]            = true,
+	["FAL"]            = true,
+	["CR Explosive"]   = true,
+	["AK-47"]          = true,
+	["Revolver"]       = true,
+}
+
+-- Helper: Returns a slightly darker shade of a Color3
+local function getDarkerColor(color)
+	return Color3.new(color.R * 0.75, color.G * 0.75, color.B * 0.75)
 end
 
+-- Helper: Checks if the player has any target items in backpack or equipped
+local function hasTargetItem(player, character)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	
+	-- Check Backpack
+	if backpack then
+		for _, item in ipairs(backpack:GetChildren()) do
+			if TARGET_ITEMS[item.Name] then
+				return true
+			end
+		end
+	end
+	
+	-- Check Character (Equipped Tools)
+	if character then
+		for _, item in ipairs(character:GetChildren()) do
+			if item:IsA("Tool") and TARGET_ITEMS[item.Name] then
+				return true
+			end
+		end
+	end
+	
+	return false
+end
+
+-- Core: Sets up the visual indicators for a player's character
 local function setupIndicator(player, character)
 	if player == LocalPlayer then return end
+	
 	local head = character:WaitForChild("Head", 5)
-	if not head then return end
+	local humanoid = character:WaitForChild("Humanoid", 5)
+	if not head or not humanoid then return end
 
-	-- Cleanup old instances if they exist
-	if head:FindFirstChild("TeamIndicator") then head.TeamIndicator:Destroy() end
-	if character:FindFirstChild("TeamHighlight") then character.TeamHighlight:Destroy() end
-
-	-- 1. BillboardGui Setup (Head diamond)
-	local bg = Instance.new("BillboardGui", head)
-	bg.Name, bg.AlwaysOnTop, bg.Size, bg.StudsOffsetWorldSpace, bg.Adornee = 
-		"TeamIndicator", true, UDim2.new(0, 25, 0, 25), Vector3.new(0, 1.5, 0), head
-
-	local frame = Instance.new("Frame", bg)
-	frame.AnchorPoint, frame.Position, frame.Size, frame.Rotation = 
-		Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0), UDim2.new(0.2, 0, 0.2, 0), 45
-	frame.BorderSizePixel, frame.BorderColor3 = 1, Color3.new(0, 0, 0)
-
-	-- 2. Highlight Setup (Character Model ESP)
-	local hl = Instance.new("Highlight", character)
-	hl.Name, hl.DepthMode, hl.FillTransparency, hl.OutlineTransparency = 
-		"TeamHighlight", Enum.HighlightDepthMode.AlwaysOnTop, 0.95, 0.8
-
-	-- 3. Team Color Sync
-	local function updateColors()
-		local teamCol = (player.Team and teamColors[player.Team.Name]) or teamColors.Guards
-		frame.BackgroundColor3 = teamCol
-		hl.FillColor = teamCol
-		hl.OutlineColor = getDarkerColor(teamCol)
+	-- Cleanup previous instances if they exist
+	if head:FindFirstChild("TeamIndicator") then 
+		head.TeamIndicator:Destroy() 
 	end
-	updateColors()
-	player:GetPropertyChangedSignal("Team"):Connect(updateColors)
+	if character:FindFirstChild("TeamHighlight") then 
+		character.TeamHighlight:Destroy() 
+	end
+
+	-- 1. Create BillboardGui (Head Diamond)
+	local billboardGui = Instance.new("BillboardGui", head)
+	billboardGui.Name = "TeamIndicator"
+	billboardGui.AlwaysOnTop = true
+	billboardGui.Size = UDim2.new(0, 25, 0, 25)
+	billboardGui.StudsOffsetWorldSpace = Vector3.new(0, 1.5, 0)
+	billboardGui.Adornee = head
+
+	local frame = Instance.new("Frame", billboardGui)
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+	frame.Size = UDim2.new(0.2, 0, 0.2, 0)
+	frame.Rotation = 45
+	frame.BorderSizePixel = 1
+	frame.BorderColor3 = Color3.new(0, 0, 0) -- Always pure black base border
+
+	-- Add UIStroke for the clean white outline effect on top
+	local whiteOutline = Instance.new("UIStroke", frame)
+	whiteOutline.Name = "WhiteOutline"
+	whiteOutline.Color = Color3.new(1, 1, 1)
+	whiteOutline.Thickness = 1
+	whiteOutline.Enabled = false
+
+	-- 2. Create Highlight (Character ESP)
+	local highlight = Instance.new("Highlight", character)
+	highlight.Name = "TeamHighlight"
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillTransparency = 0.95
+	highlight.OutlineTransparency = 0.8
+
+	-- 3. Refresh Visuals (Colors & Outline State)
+	local function refreshVisuals()
+		local teamName = player.Team and player.Team.Name
+		local teamColor = TEAM_COLORS[teamName] or TEAM_COLORS.Guards
+		
+		frame.BackgroundColor3 = teamColor
+		highlight.FillColor = teamColor
+		highlight.OutlineColor = getDarkerColor(teamColor)
+		
+		-- Enable white outline on top of the black border only for Inmates holding a target item
+		if teamName == "Inmates" and hasTargetItem(player, character) then
+			whiteOutline.Enabled = true
+		else
+			whiteOutline.Enabled = false
+		end
+	end
+
+	refreshVisuals()
+	player:GetPropertyChangedSignal("Team"):Connect(refreshVisuals)
+
+	-- Connect Inventory & Equipment Change Listeners
+	local backpack = player:WaitForChild("Backpack", 5)
+	if backpack then
+		backpack.ChildAdded:Connect(refreshVisuals)
+		backpack.ChildRemoved:Connect(refreshVisuals)
+	end
+	
+	character.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") then refreshVisuals() end
+	end)
+	character.ChildRemoved:Connect(function(child)
+		if child:IsA("Tool") then refreshVisuals() end
+	end)
 
 	-- 4. Alive / Dead State Management
-	local humanoid = character:WaitForChild("Humanoid", 5)
-	if humanoid then
-		local function updateHealth() 
-			local isAlive = humanoid.Health > 0
-			bg.Enabled = isAlive
-			hl.Enabled = isAlive
-		end
-		updateHealth()
-		humanoid:GetPropertyChangedSignal("Health"):Connect(updateHealth)
-		humanoid.Died:Connect(function() 
-			bg.Enabled = false 
-			hl.Enabled = false
-		end)
+	local function updateHealth()
+		local isAlive = (humanoid.Health > 0)
+		billboardGui.Enabled = isAlive
+		highlight.Enabled = isAlive
 	end
+	
+	updateHealth()
+	humanoid:GetPropertyChangedSignal("Health"):Connect(updateHealth)
+	humanoid.Died:Connect(updateHealth)
 end
 
+-- Monitor lifecycle of players joining and spawning
 local function monitorPlayer(player)
-	player.CharacterAdded:Connect(function(char) setupIndicator(player, char) end)
-	if player.Character then task.spawn(setupIndicator, player, player.Character) end
+	player.CharacterAdded:Connect(function(character)
+		setupIndicator(player, character)
+	end)
+	
+	if player.Character then
+		task.spawn(setupIndicator, player, player.Character)
+	end
 end
 
 Players.PlayerAdded:Connect(monitorPlayer)
-for _, p in ipairs(Players:GetPlayers()) do monitorPlayer(p) end
+for _, player in ipairs(Players:GetPlayers()) do
+	monitorPlayer(player)
+end
